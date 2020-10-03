@@ -1,0 +1,3 @@
+--read -p COM10 -b 115200 --log-type progress -x 10000 -f "D:\GitHubDevBoard\arduFPGA-external-programing-tool\build-ardufpga-ptool-Desktop_x86_windows_msys_pe_32bit-Debug\debug\dld.mem" -y 0400 -e "D:\GitHubDevBoard\arduFPGA-external-programing-tool\build-ardufpga-ptool-Desktop_x86_windows_msys_pe_32bit-Debug\debug\dld.eep"
+
+--read -p COM10 -b 115200 -t RAM -S 0002 -E 00018
