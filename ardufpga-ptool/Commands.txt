@@ -1,3 +1,24 @@
---read -p COM10 -b 115200 --log-type progress -x 10000 -f "D:\GitHubDevBoard\arduFPGA-external-programing-tool\build-ardufpga-ptool-Desktop_x86_windows_msys_pe_32bit-Debug\debug\dld.mem" -y 0400 -e "D:\GitHubDevBoard\arduFPGA-external-programing-tool\build-ardufpga-ptool-Desktop_x86_windows_msys_pe_32bit-Debug\debug\dld.eep"
+Get baud rates:
+sudo ./ardufpga-ptool -C getbaudrate -p /dev/ttyUSB0
 
---read -p COM10 -b 115200 -t RAM -S 0002 -E 00018
+Get COM ports list:
+sudo ./ardufpga-ptool -C getcomlist
+
+Dump memory to console:
+-C read -p COM10 -b 115200 -t FLASH -S 0000 -E 8000 --log-type progress
+-C read -p COM10 -b 115200 -t EEPROM -S 0000 -E 400 --log-type progress
+-C read -p COM10 -b 115200 -t RAM -S 0000 -E 8000 --log-type progress
+
+Dump memory to file:
+-C read -p COM10 -b 115200 --log-type progress -f "dld.hex" --flash-size 10000
+-C read -p COM10 -b 115200 --log-type progress -f "dld.hex" --flash-size 10000 -e "dld.eep" --eeprom-size 400 -r "dld.ram" --ram-size 8000
+
+Write memory:
+-C writer -p COM10 -b 115200 --log-type progress -f "C:\Users\MorgothCreator\Desktop\MiniRogue\MiniRogue\MiniRogue.ino.micro.hex"
+
+
+
+
+
+
+
