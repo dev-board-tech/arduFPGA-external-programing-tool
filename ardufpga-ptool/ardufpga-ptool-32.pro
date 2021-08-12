@@ -1,6 +1,8 @@
 QT += widgets serialport
 QT -= gui
 
+TARGET = ../../../ptool-win32/ardufpga-ptool
+
 CONFIG += c++11 console
 CONFIG -= app_bundle
 CONFIG -= import_plugins

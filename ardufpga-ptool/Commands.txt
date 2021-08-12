@@ -14,11 +14,4 @@ Dump memory to file:
 -C read -p COM10 -b 115200 --log-type progress -f "dld.hex" --flash-size 10000 -e "dld.eep" --eeprom-size 400 -r "dld.ram" --ram-size 8000
 
 Write memory:
--C writer -p COM10 -b 115200 --log-type progress -f "C:\Users\MorgothCreator\Desktop\MiniRogue\MiniRogue\MiniRogue.ino.micro.hex"
-
-
-
-
-
-
-
+-C write -p COM10 -b 115200 --log-type progress -f "C:\example.hex"

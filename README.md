@@ -1,9 +1,10 @@
 # arduFPGA-external-programing-tool
 
- A command line tool for writting, reading and debugging arduFPGA microcontroller designs.
+ A command line tool for writing, reading and debugging arduFPGA microcontroller designs.
 
 ### Arguments:
 
+* -C or --command: values: "read" or  "write"
 * -s or --log-type: values: "address" or "progress"
 * -D or --data: values: memory data to write in hex string format, is mandatory to give the -S, -E, -W and -t parameters.
 * -t or --data-type: values: "FLASH", "EEPROM" or "RAM", if -t argument is given then the tool will be able to write, read chucks of memory using -S and -E arguments.
@@ -26,7 +27,7 @@
 ###### Read and store FLASH memory with size of "0x10000" to "C:\flash_dld.mem" file and EEPROM memory with size of "0x400" to "C:\eeprom_dld.eep" file.
 
 ```
-ardufpga-ptool.exe --read -p COM10 -b 115200 --log-type progress -x 10000 -f "C:\dld.mem" -y 0400 -e "C:\dld.eep"
+ardufpga-ptool.exe -C read -p COM10 -b 115200 --log-type progress -x 10000 -f "C:\dld.mem" -y 0400 -e "C:\dld.eep"
 ```
 Response:
 ```
@@ -39,7 +40,7 @@ OK: Reading memory.
 ##### Dump the content of a memory to terminal:
 
 ```
-ardufpga-ptool.exe --read -p COM10 -b 115200 -t RAM -S 0002 -E 00018
+ardufpga-ptool.exe -C read -p COM10 -b 115200 -t RAM -S 0002 -E 00018
 ```
 Response:
 ```

@@ -12,6 +12,8 @@
 #include <QtSerialPort/QSerialPortInfo>
 #include <QThread>
 
+#define VERSION             "0.1.0"
+
 #define BAUD_RATE_LIST  {   "600000",\
                             "576000",\
                             "500000",\
@@ -139,7 +141,11 @@ int util_int_to_percent(int maxPercentageValue, int minValue, int maxValue, int 
     else if(value < minValue) {
         value = minValue;
     }
-    ReturnedValue = (value - minValue) / ((maxValue - minValue) / maxPercentageValue);
+    int tmp = ((maxValue - minValue) / maxPercentageValue);
+    if(tmp == 0) {
+        return 0;
+    }
+    ReturnedValue = (value - minValue) / tmp;
     if(ReturnedValue > maxPercentageValue)
         ReturnedValue = maxPercentageValue;
     else if(ReturnedValue < 0)
@@ -152,6 +158,7 @@ static bool uartSendReceiveChar(QSerialPort *serial, char c) {
     QByteArray arr;
     char cRx;
     arr.append(c);
+    serial->flush();
     if(serial->write(arr) == ERR_INCORECT_ARGUMENT) {
         err = true;
     } else {
@@ -160,6 +167,34 @@ static bool uartSendReceiveChar(QSerialPort *serial, char c) {
             if(responseData.count() == 1) {
                 cRx = responseData[0];
                 if(c != cRx) {
+                    err = true;
+                } else {
+                    err = false;
+                }
+            } else {
+                err = true;
+            }
+        } else {
+            err = true;
+        }
+    }
+    return err;
+}
+
+static bool uartSendReceiveChar(QSerialPort *serial, char c, char expC) {
+    bool err = false;
+    QByteArray arr;
+    char cRx;
+    arr.append(c);
+    serial->flush();
+    if(serial->write(arr) == ERR_INCORECT_ARGUMENT) {
+        err = true;
+    } else {
+        if(serial->waitForReadyRead(5)) {
+            QByteArray responseData = serial->readAll();
+            if(responseData.count() == 1) {
+                cRx = responseData[0];
+                if(expC != cRx) {
                     err = true;
                 } else {
                     err = false;
@@ -214,14 +249,15 @@ static bool uartReadBytes(bool postStatus, QString logType, int size, QSerialPor
     QStringList list;
     int count = 0;
     if(serial->isOpen()) {
+        serial->flush();
         uartSendReceiveChar(serial, '\r');
         while(1) {
             bool newData = false;
             QEventLoop loop;
-            QTimer::singleShot(150, &loop, SLOT(quit()));
+            QTimer::singleShot(5, &loop, SLOT(quit()));
             loop.exec();
-            if(serial->waitForReadyRead(50)) {
-                QByteArray responseData = serial->readAll();
+            QByteArray responseData = serial->readAll();
+            if(responseData.count()) {
                 data->append(responseData);
                 if(postStatus) {
                     if(logType.length() > 0){
@@ -252,7 +288,7 @@ static bool uartReadBytes(bool postStatus, QString logType, int size, QSerialPor
 
 static bool uartSendAddrRange(QSerialPort *serial, QString cmd, QString start, QString end) {
     bool err = false;
-    QString command = cmd + ":" + start + "-" + end.mid(end.length()-4, 4) + "\r";
+    QString command = cmd + ":" + start + "-" + end.mid(end.length()-4, 4);
     if(serial->isOpen()) {
         for(char ch : command.toStdString()) {
             if(uartSendReceiveChar(serial, ch)) {
@@ -273,7 +309,7 @@ static int parseHexFileToBinByte(QByteArray dataIn, QStringList *romOut) {
         QStringList dataLines = tmp.split("\r\n");
         uint32_t baseAddress = 0;
         uint32_t extendedAddress = 0;
-        for(QString line : dataLines) {
+        foreach(QString line, dataLines) {
             if(line.at(0) == ':') {
                 bool ok = false;
                 uint32_t lineLen = line.mid(1, 2).toUInt(&ok, 16) * 2;
@@ -371,7 +407,7 @@ static int sendData(bool postStatus, QSerialPort *serial, QStringList data, QStr
     QString sent;
     if(serial->isOpen()) {
         serial->clear();
-        for(QString line : data) {
+        foreach(QString line, data) {
             serial->write(line.toUtf8());
             serial->waitForBytesWritten(30000);
             {
@@ -392,6 +428,56 @@ static int sendData(bool postStatus, QSerialPort *serial, QStringList data, QStr
         stream << "\r\n";
     }
     return ERR_OK;
+}
+
+int enterDebug(QSerialPort *serial) {
+    QTextStream stream(stdout);
+    uartSendReceiveChar(serial, 'X');
+    uartSendReceiveChar(serial, '\r');
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, 'D')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, 'E')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, 'B')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, 'U')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, 'G')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    if(uartSendReceiveChar(serial, '\r', 'K')) {
+        stream << MESSAGE_5 << Qt::endl;
+        serial->close();
+        return ERR_BOARD_NOT_RESPONDING;
+    }
+    QThread::msleep(3);
+    return ERR_OK;
+}
+
+int exitApp(QSerialPort *serial, int err) {
+    uartSendReceiveChar(serial, 'X');
+    serial->close();
+    return err;
 }
 
 int main(int argc, char *argv[])
@@ -534,18 +620,21 @@ int main(int argc, char *argv[])
             stream << MESSAGE_7 << Qt::endl;
             return ERR_CAN_NOT_OPPEN_COM_PORT;
         } else {
+            int debRes = 0;
+            if((debRes = enterDebug(&serial))) {
+                return debRes;
+            }
             if(!command.compare("read")) {
                 if(flashFileIsSet) {
                     QFile file(flashFile);
                     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                             stream << MESSAGE_18 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_CREATE_FLASH_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_CREATE_FLASH_FILE);
                     } else {
                         bool ok = false;
                         int size = flashSize.toInt(&ok, 16);
                         if(!uartSendAddrRange(&serial, "RF", "0000", size < 65536 ? QString::asprintf("%04x", size) : "0000")) {
-                            QString data;
+                            //QString data;
                             stream << "FLASH: Reading..." << Qt::endl;
                             if(!uartReadBytes(PROGRESS_VISIBLE, logType, flashSize.toInt(&ok, 16), &serial, &data)) {
                                 data = data.remove(QRegExp("^((?:\r?\n|\r))+"));
@@ -554,13 +643,11 @@ int main(int argc, char *argv[])
                                 file.write((const char*)(ba.data()), ba.length());
                             } else {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
                 }
@@ -568,8 +655,7 @@ int main(int argc, char *argv[])
                     QFile file(eepromFile);
                     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                             stream << MESSAGE_19 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_CREATE_EEPROM_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_CREATE_EEPROM_FILE);
                     } else {
                         bool ok = false;
                         int size = eepromSize.toInt(&ok, 16);
@@ -583,13 +669,11 @@ int main(int argc, char *argv[])
                                 file.write((const char*)(ba.data()), ba.length());
                             } else {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
                 }
@@ -597,8 +681,7 @@ int main(int argc, char *argv[])
                     QFile file(ramFile);
                     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
                             stream << MESSAGE_20 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_CREATE_RAM_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_CREATE_RAM_FILE);
                     } else {
                         bool ok = false;
                         int size = ramSize.toInt(&ok, 16);
@@ -612,16 +695,15 @@ int main(int argc, char *argv[])
                                 file.write((const char*)(ba.data()), ba.length());
                             } else {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
                 }
+                serial.write("X");
                 return ERR_OK;
             } else if(!command.compare("write") || !command.compare("writer")) {
                 if(flashFileIsSet) {
@@ -629,14 +711,12 @@ int main(int argc, char *argv[])
                     QString ext = fi.suffix();
                     if(ext.compare("bin") && ext.compare("hex")) {
                         stream << MESSAGE_6 << Qt::endl;
-                        serial.close();
-                        return ERR_FILE_EXTENSION_NOT_SUPPORTED;
+                        return exitApp(&serial, ERR_FILE_EXTENSION_NOT_SUPPORTED);
                     }
                     QFile file(flashFile);
                     if (!file.open(QIODevice::ReadOnly)) {
                             stream << MESSAGE_15 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_OPEN_FLASH_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_OPEN_FLASH_FILE);
                     } else {
                         QStringList data;
                         QByteArray binary = file.readAll();
@@ -650,13 +730,11 @@ int main(int argc, char *argv[])
                         } else if(!ext.compare("hex")) {
                             if(parseHexFileToBinWord(binary, &data)) {
                                 stream << MESSAGE_9 << Qt::endl;
-                                serial.close();
-                                return ERR_INVALID_HEX_FILE;
+                                return exitApp(&serial, ERR_INVALID_HEX_FILE);
                             }
                         } else {
                             stream << MESSAGE_14 << Qt::endl;
-                            serial.close();
-                            return ERR_UNRECOGNIZED_FILE;
+                            return exitApp(&serial, ERR_UNRECOGNIZED_FILE);
                         }
                         if(!command.compare("writer") && !eepromFileIsSet && !ramFileIsSet) {
                             data.append("L");
@@ -664,13 +742,11 @@ int main(int argc, char *argv[])
                         if(!uartSendAddrRange(&serial, "WF", "0000", QString::asprintf("%04X", data.count()))) {
                             if(sendData(PROGRESS_VISIBLE, &serial, data, logType)) {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
                 }
@@ -679,14 +755,12 @@ int main(int argc, char *argv[])
                     QString ext = fi.suffix();
                     if(ext.compare("bin") && ext.compare("eep")) {
                         stream << MESSAGE_6 << Qt::endl;
-                        serial.close();
-                        return ERR_FILE_EXTENSION_NOT_SUPPORTED;
+                        return exitApp(&serial, ERR_FILE_EXTENSION_NOT_SUPPORTED);
                     }
                     QFile file(eepromFile);
                     if (!file.open(QIODevice::ReadOnly)) {
                             stream << MESSAGE_16 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_OPEN_EEPROM_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_OPEN_EEPROM_FILE);
                     } else {
                         QStringList data;
                         QByteArray binary = file.readAll();
@@ -700,13 +774,11 @@ int main(int argc, char *argv[])
                         } else if(!ext.compare("eep")) {
                             if(parseHexFileToBinByte(binary, &data)) {
                                 stream << MESSAGE_9 << Qt::endl;
-                                serial.close();
-                                return ERR_INVALID_HEX_FILE;
+                                return exitApp(&serial, ERR_INVALID_HEX_FILE);
                             }
                         } else {
                             stream << MESSAGE_14 << Qt::endl;
-                            serial.close();
-                            return ERR_UNRECOGNIZED_FILE;
+                            return exitApp(&serial, ERR_UNRECOGNIZED_FILE);
                         }
                         if(!command.compare("writer") && !ramFileIsSet) {
                             data.append("L");
@@ -714,13 +786,11 @@ int main(int argc, char *argv[])
                         if(!uartSendAddrRange(&serial, "WE", "0000", QString::asprintf("%04X", data.count()))) {
                             if(sendData(PROGRESS_VISIBLE, &serial, data, logType)) {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
                 }
@@ -729,14 +799,12 @@ int main(int argc, char *argv[])
                     QString ext = fi.suffix();
                     if(ext.compare("bin") && ext.compare("ram")) {
                         stream << MESSAGE_6 << Qt::endl;
-                        serial.close();
-                        return ERR_FILE_EXTENSION_NOT_SUPPORTED;
+                        return exitApp(&serial, ERR_FILE_EXTENSION_NOT_SUPPORTED);
                     }
                     QFile file(ramFile);
                     if (!file.open(QIODevice::ReadOnly)) {
                             stream << MESSAGE_17 << Qt::endl;
-                            serial.close();
-                            return ERR_CAN_NOT_OPEN_RAM_FILE;
+                            return exitApp(&serial, ERR_CAN_NOT_OPEN_RAM_FILE);
                     } else {
                         QStringList data;
                         QByteArray binary = file.readAll();
@@ -750,13 +818,11 @@ int main(int argc, char *argv[])
                         } else if(!ext.compare("ram")) {
                             if(parseHexFileToBinByte(binary, &data)) {
                                 stream << MESSAGE_9 << Qt::endl;
-                                serial.close();
-                                return ERR_INVALID_HEX_FILE;
+                                return exitApp(&serial, ERR_INVALID_HEX_FILE);
                             }
                         } else {
                             stream << MESSAGE_14 << Qt::endl;
-                            serial.close();
-                            return ERR_UNRECOGNIZED_FILE;
+                            return exitApp(&serial, ERR_UNRECOGNIZED_FILE);
                         }
                         if(!command.compare("writer")) {
                             data.append("L");
@@ -764,24 +830,25 @@ int main(int argc, char *argv[])
                         if(!uartSendAddrRange(&serial, "WR", "0000", QString::asprintf("%04X", data.count()))) {
                             if(sendData(PROGRESS_VISIBLE, &serial, data, logType)) {
                                 stream << MESSAGE_4 << Qt::endl;
-                                serial.close();
-                                return ERR_NOT_SEND_ANY_DATA;
+                                return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                             }
                         } else {
                             stream << MESSAGE_5 << Qt::endl;
-                            serial.close();
-                            return ERR_BOARD_NOT_RESPONDING;
+                            return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                         }
                     }
+                }
+                if(uartSendReceiveChar(&serial, 'X')) {
+                    stream << MESSAGE_5 << Qt::endl;
+                    return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                 }
                 return ERR_OK;
             } else {
                 stream << MESSAGE_1 << Qt::endl;
-                serial.close();
-                return ERR_NO_OPERATION_SELECTED;
+                return exitApp(&serial, ERR_NO_OPERATION_SELECTED);
             }
             stream << "OK: Reading memory." << Qt::endl;
-            serial.close();
+            exitApp(&serial, ERR_OK);
         }
     } else if(commandIsSet && dataTypeIsSet && comPortIsSet && baudRateIsSet && startIsSet && endIsSet) {
         serial.setPortName(comPort);
@@ -790,6 +857,11 @@ int main(int argc, char *argv[])
             stream << MESSAGE_7 << Qt::endl;
             return ERR_CAN_NOT_OPPEN_COM_PORT;
         } else {
+            //serial.setBreakEnabled(false);
+            int debRes = 0;
+            if((debRes = enterDebug(&serial))) {
+                return debRes;
+            }
             if(!command.compare("read")) {
                 if(!dataType.compare("FLASH")) {
                     if(!uartSendAddrRange(&serial, "RF", start, end)) {
@@ -799,20 +871,19 @@ int main(int argc, char *argv[])
                             data = data.remove(QRegExp("^((?:\r?\n|\r))+"));
                             data = data.replace("\n\r", "\r");
                             QStringList list = data.split("\r", QString::SkipEmptyParts);
-                            for(QString str : list) {
+                            foreach(QString str, list) {
                                 std::string conv = str.toStdString();
                                 stream << conv.c_str() << Qt::endl;
                             }
                             stream << "OK: Reading FLASH memory." << Qt::endl;
+                            return exitApp(&serial, ERR_OK);
                         } else {
                             stream << MESSAGE_4 << Qt::endl;
-                            serial.close();
-                            return ERR_NOT_SEND_ANY_DATA;
+                            return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                         }
                     } else {
                         stream << MESSAGE_5 << Qt::endl;
-                        serial.close();
-                        return ERR_BOARD_NOT_RESPONDING;
+                        return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                     }
                 } else if(!dataType.compare("EEPROM")) {
                     if(!uartSendAddrRange(&serial, "RE", start, end)) {
@@ -822,20 +893,19 @@ int main(int argc, char *argv[])
                             data = data.remove(QRegExp("^((?:\r?\n|\r))+"));
                             data = data.replace("\n\r", "\r");
                             QStringList list = data.split("\r", QString::SkipEmptyParts);
-                            for(QString str : list) {
+                            foreach(QString str, list) {
                                 std::string conv = str.toStdString();
                                 stream << conv.c_str() << Qt::endl;
                             }
                             stream << "OK: Reading EEPROM memory." << Qt::endl;
+                            return exitApp(&serial, ERR_OK);
                         } else {
                             stream << MESSAGE_4 << Qt::endl;
-                            serial.close();
-                            return ERR_NOT_SEND_ANY_DATA;
+                            return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                         }
                     } else {
                         stream << MESSAGE_5 << Qt::endl;
-                        serial.close();
-                        return ERR_BOARD_NOT_RESPONDING;
+                        return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                     }
 
                 } else if(!dataType.compare("RAM")) {
@@ -846,40 +916,35 @@ int main(int argc, char *argv[])
                             data = data.remove(QRegExp("^((?:\r?\n|\r))+"));
                             data = data.replace("\n\r", "\r");
                             QStringList list = data.split("\r", QString::SkipEmptyParts);
-                            for(QString str : list) {
+                            foreach(QString str, list) {
                                 std::string conv = str.toStdString();
                                 stream << conv.c_str() << Qt::endl;
                             }
                             stream << "OK: Reading RAM memory." << Qt::endl;
+                            return exitApp(&serial, ERR_OK);
                         } else {
                             stream << MESSAGE_4 << Qt::endl;
-                            serial.close();
-                            return ERR_NOT_SEND_ANY_DATA;
+                            return exitApp(&serial, ERR_NOT_SEND_ANY_DATA);
                         }
                     } else {
                         stream << MESSAGE_5 << Qt::endl;
-                        serial.close();
-                        return ERR_BOARD_NOT_RESPONDING;
+                        return exitApp(&serial, ERR_BOARD_NOT_RESPONDING);
                     }
 
                 } else {
                     stream << MESSAGE_8 << Qt::endl;
-                    serial.close();
-                    return ERR_INVALID_MEMORY_TYPE;
+                    return exitApp(&serial, ERR_INVALID_MEMORY_TYPE);
                 }
             } else if(!command.compare("write")) {
 
             } else {
                 stream << MESSAGE_1 << Qt::endl;
-                serial.close();
-                return ERR_NO_OPERATION_SELECTED;
+                return exitApp(&serial, ERR_NO_OPERATION_SELECTED);
             }
-            serial.close();
-            return 0;
         }
     } else if(commandIsSet && !command.compare("getcomlist")) {
         QList<QSerialPortInfo> list = QSerialPortInfo::availablePorts();
-        for(QSerialPortInfo portInfo: list) {
+        foreach(QSerialPortInfo portInfo, list) {
 #ifdef Q_OS_LINUX
             stream << "/dev/" <<portInfo.portName() << Qt::endl;
 #elif defined(Q_OS_WIN32)
@@ -889,7 +954,7 @@ int main(int argc, char *argv[])
         return 0;
     } else if(commandIsSet && comPortIsSet && !command.compare("getbaudrate")) {
         QStringList list = BAUD_RATE_LIST;
-        for(QString baud: list) {
+        foreach(QString baud, list) {
             stream << baud << Qt::endl;
         }
         return 0;
